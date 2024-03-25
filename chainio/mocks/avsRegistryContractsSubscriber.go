@@ -9,6 +9,8 @@
 package mocks
 
 import (
+	"github.com/Layr-Labs/eigensdk-go/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	reflect "reflect"
 
 	contractBLSApkRegistry "github.com/Layr-Labs/eigensdk-go/contracts/bindings/BLSApkRegistry"
@@ -41,6 +43,15 @@ func (m *MockAvsRegistrySubscriber) EXPECT() *MockAvsRegistrySubscriberMockRecor
 
 // SubscribeToNewPubkeyRegistrations mocks base method.
 func (m *MockAvsRegistrySubscriber) SubscribeToNewPubkeyRegistrations() (chan *contractBLSApkRegistry.ContractBLSApkRegistryNewPubkeyRegistration, event.Subscription, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubscribeToNewPubkeyRegistrations")
+	ret0, _ := ret[0].(chan *contractBLSApkRegistry.ContractBLSApkRegistryNewPubkeyRegistration)
+	ret1, _ := ret[1].(event.Subscription)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+func (m *MockAvsRegistrySubscriber) SubscribeToNewPubkeyRegistrationsWithStart(start uint64) (chan *contractBLSApkRegistry.ContractBLSApkRegistryNewPubkeyRegistration, event.Subscription, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SubscribeToNewPubkeyRegistrations")
 	ret0, _ := ret[0].(chan *contractBLSApkRegistry.ContractBLSApkRegistryNewPubkeyRegistration)

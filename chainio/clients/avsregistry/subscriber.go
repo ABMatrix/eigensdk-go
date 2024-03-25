@@ -12,6 +12,7 @@ import (
 
 type AvsRegistrySubscriber interface {
 	SubscribeToNewPubkeyRegistrations() (chan *blsapkreg.ContractBLSApkRegistryNewPubkeyRegistration, event.Subscription, error)
+	SubscribeToNewPubkeyRegistrationsWithStart(start uint64) (chan *blsapkreg.ContractBLSApkRegistryNewPubkeyRegistration, event.Subscription, error)
 }
 
 type AvsRegistryChainSubscriber struct {
@@ -49,6 +50,20 @@ func (s *AvsRegistryChainSubscriber) SubscribeToNewPubkeyRegistrations() (chan *
 	newPubkeyRegistrationChan := make(chan *blsapkreg.ContractBLSApkRegistryNewPubkeyRegistration)
 	sub, err := s.blsApkRegistry.WatchNewPubkeyRegistration(
 		&bind.WatchOpts{}, newPubkeyRegistrationChan, nil,
+	)
+	if err != nil {
+		s.logger.Error("Failed to subscribe to NewPubkeyRegistration events", "err", err)
+		return nil, nil, err
+	}
+	return newPubkeyRegistrationChan, sub, nil
+}
+
+func (s *AvsRegistryChainSubscriber) SubscribeToNewPubkeyRegistrationsWithStart(start uint64) (chan *blsapkreg.ContractBLSApkRegistryNewPubkeyRegistration, event.Subscription, error) {
+	newPubkeyRegistrationChan := make(chan *blsapkreg.ContractBLSApkRegistryNewPubkeyRegistration)
+	sub, err := s.blsApkRegistry.WatchNewPubkeyRegistration(
+		&bind.WatchOpts{
+			Start: &start,
+		}, newPubkeyRegistrationChan, nil,
 	)
 	if err != nil {
 		s.logger.Error("Failed to subscribe to NewPubkeyRegistration events", "err", err)
