@@ -2,12 +2,14 @@ package operatorpubkeys
 
 import (
 	"context"
+	"math/big"
 	"sync"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/avsregistry"
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	"github.com/Layr-Labs/eigensdk-go/logging"
 	"github.com/Layr-Labs/eigensdk-go/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -51,6 +53,7 @@ func NewOperatorPubkeysServiceInMemory(
 	avsRegistrySubscriber avsregistry.AvsRegistrySubscriber,
 	avsRegistryReader avsregistry.AvsRegistryReader,
 	logger logging.Logger,
+	opts *bind.WatchOpts,
 ) *OperatorPubkeysServiceInMemory {
 	queryC := make(chan query)
 	pkcs := &OperatorPubkeysServiceInMemory{
@@ -63,24 +66,24 @@ func NewOperatorPubkeysServiceInMemory(
 	// which requires querying the past events of the pubkey registration contract
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	pkcs.startServiceInGoroutine(ctx, queryC, &wg)
+	pkcs.startServiceInGoroutine(ctx, queryC, &wg, opts)
 	wg.Wait()
 	return pkcs
 }
 
-func (ops *OperatorPubkeysServiceInMemory) startServiceInGoroutine(ctx context.Context, queryC <-chan query, wg *sync.WaitGroup) {
+func (ops *OperatorPubkeysServiceInMemory) startServiceInGoroutine(ctx context.Context, queryC <-chan query, wg *sync.WaitGroup, opts *bind.WatchOpts) {
 	go func() {
 		pubkeyDict := make(map[common.Address]types.OperatorPubkeys)
 
 		// TODO(samlaf): we should probably save the service in the logger itself and add it automatically to all logs
 		ops.logger.Debug("Subscribing to new pubkey registration events on blsApkRegistry contract", "service", "OperatorPubkeysServiceInMemory")
-		newPubkeyRegistrationC, newPubkeyRegistrationSub, err := ops.avsRegistrySubscriber.SubscribeToNewPubkeyRegistrations()
+		newPubkeyRegistrationC, newPubkeyRegistrationSub, err := ops.avsRegistrySubscriber.SubscribeToNewPubkeyRegistrations(opts)
 		if err != nil {
 			ops.logger.Error("Fatal error opening websocket subscription for new pubkey registrations", "err", err, "service", "OperatorPubkeysServiceInMemory")
 			// see the warning above the struct definition to understand why we panic here
 			panic(err)
 		}
-		ops.queryPastRegisteredOperatorEventsAndFillDb(ctx, pubkeyDict)
+		ops.queryPastRegisteredOperatorEventsAndFillDb(ctx, pubkeyDict, opts)
 		// The constructor can return after we have backfilled the db by querying the events of operators that have registered with the blsApkRegistry
 		// before the block at which we started the ws subscription above
 		wg.Done()
@@ -93,7 +96,7 @@ func (ops *OperatorPubkeysServiceInMemory) startServiceInGoroutine(ctx context.C
 			case err := <-newPubkeyRegistrationSub.Err():
 				ops.logger.Error("Error in websocket subscription for new pubkey registration events. Attempting to reconnect...", "err", err, "service", "OperatorPubkeysServiceInMemory")
 				newPubkeyRegistrationSub.Unsubscribe()
-				newPubkeyRegistrationC, newPubkeyRegistrationSub, err = ops.avsRegistrySubscriber.SubscribeToNewPubkeyRegistrations()
+				newPubkeyRegistrationC, newPubkeyRegistrationSub, err = ops.avsRegistrySubscriber.SubscribeToNewPubkeyRegistrations(opts)
 				if err != nil {
 					ops.logger.Error("Error opening websocket subscription for new pubkey registrations", "err", err, "service", "OperatorPubkeysServiceInMemory")
 					// see the warning above the struct definition to understand why we panic here
@@ -118,10 +121,11 @@ func (ops *OperatorPubkeysServiceInMemory) startServiceInGoroutine(ctx context.C
 	}()
 }
 
-func (pkcs *OperatorPubkeysServiceInMemory) queryPastRegisteredOperatorEventsAndFillDb(ctx context.Context, pubkeydict map[common.Address]types.OperatorPubkeys) {
+func (pkcs *OperatorPubkeysServiceInMemory) queryPastRegisteredOperatorEventsAndFillDb(ctx context.Context, pubkeydict map[common.Address]types.OperatorPubkeys, opts *bind.WatchOpts) {
 	// Querying with nil startBlock and stopBlock will return all events. It doesn't matter if we query some events that we will receive again in the websocket,
 	// since we will just overwrite the pubkey dict with the same values.
-	alreadyRegisteredOperatorAddrs, alreadyRegisteredOperatorPubkeys, err := pkcs.avsRegistryReader.QueryExistingRegisteredOperatorPubKeys(ctx, nil, nil)
+	start := big.NewInt(int64(*opts.Start))
+	alreadyRegisteredOperatorAddrs, alreadyRegisteredOperatorPubkeys, err := pkcs.avsRegistryReader.QueryExistingRegisteredOperatorPubKeys(ctx, start, nil)
 	if err != nil {
 		pkcs.logger.Error("Fatal error querying existing registered operators", "err", err, "service", "OperatorPubkeysServiceInMemory")
 		panic(err)
